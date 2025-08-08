@@ -6,6 +6,8 @@ import destroyedCityBg from "@/assets/destroyed-city-bg.jpg";
 import mindlessZombieSprite from "@/assets/mindless-zombie.png";
 import mindfulZombieSprite from "@/assets/mindful-zombie.png";
 import playerSprite from "@/assets/player-sprite.png";
+import { playGunshot, playKick, playThrow, playCry, playRun } from "@/utils/audioEffects";
+import { removeBackground, loadImage } from "@/utils/backgroundRemoval";
 
 interface Zombie {
   id: number;
@@ -30,6 +32,8 @@ interface GameState {
   battleLog: string[];
   lastDamage: number;
   showKO: boolean;
+  currentAction: string;
+  processedZombieSprites: { [key: string]: string };
 }
 
 export const ZombieGame = () => {
@@ -43,15 +47,64 @@ export const ZombieGame = () => {
     battleLog: [],
     lastDamage: 0,
     showKO: false,
+    currentAction: '',
+    processedZombieSprites: {},
   });
 
   const battleLogRef = useRef<HTMLDivElement>(null);
   const damageTimeoutRef = useRef<NodeJS.Timeout>();
 
-  // Initialize zombies
+  // Initialize zombies and process sprite backgrounds
   useEffect(() => {
     initializeGame();
+    processZombieSprites();
   }, []);
+
+  const processZombieSprites = async () => {
+    try {
+      // Process mindless zombie sprite
+      const mindlessImg = new Image();
+      mindlessImg.crossOrigin = 'anonymous';
+      mindlessImg.onload = async () => {
+        try {
+          const processedBlob = await removeBackground(mindlessImg);
+          const processedUrl = URL.createObjectURL(processedBlob);
+          setGameState(prev => ({
+            ...prev,
+            processedZombieSprites: {
+              ...prev.processedZombieSprites,
+              mindless: processedUrl
+            }
+          }));
+        } catch (error) {
+          console.log('Using original mindless sprite');
+        }
+      };
+      mindlessImg.src = mindlessZombieSprite;
+
+      // Process mindful zombie sprite
+      const mindfulImg = new Image();
+      mindfulImg.crossOrigin = 'anonymous';
+      mindfulImg.onload = async () => {
+        try {
+          const processedBlob = await removeBackground(mindfulImg);
+          const processedUrl = URL.createObjectURL(processedBlob);
+          setGameState(prev => ({
+            ...prev,
+            processedZombieSprites: {
+              ...prev.processedZombieSprites,
+              mindful: processedUrl
+            }
+          }));
+        } catch (error) {
+          console.log('Using original mindful sprite');
+        }
+      };
+      mindfulImg.src = mindfulZombieSprite;
+    } catch (error) {
+      console.log('Background removal not available, using original sprites');
+    }
+  };
 
   // Auto-scroll battle log
   useEffect(() => {
@@ -163,6 +216,8 @@ export const ZombieGame = () => {
       battleLog: ["=== ZOMBIE SURVIVAL ARENA ===", "You encounter 15 mindless and 15 mindful zombies!"],
       lastDamage: 0,
       showKO: false,
+      currentAction: '',
+      processedZombieSprites: {},
     });
   };
 
@@ -181,7 +236,16 @@ export const ZombieGame = () => {
     }, 1000);
   };
 
+  const showAction = (action: string) => {
+    setGameState(prev => ({ ...prev, currentAction: action }));
+    setTimeout(() => {
+      setGameState(prev => ({ ...prev, currentAction: '' }));
+    }, 1000);
+  };
+
   const throwObject = () => {
+    playThrow();
+    showAction('🪨 THROWING');
     const frequency = Math.floor(Math.random() * 4000) + 1000;
     setGameState(prev => ({ ...prev, currentSoundFrequency: frequency }));
     addLog(`🪨 Threw object creating ${frequency}Hz sound!`);
@@ -204,6 +268,8 @@ export const ZombieGame = () => {
   };
 
   const cryBaby = () => {
+    playCry();
+    showAction('👶 CRYING');
     const frequency = Math.floor(Math.random() * 1000) + 3000;
     setGameState(prev => ({ ...prev, currentSoundFrequency: frequency }));
     addLog(`👶 Baby crying at ${frequency}Hz!`);
@@ -225,6 +291,8 @@ export const ZombieGame = () => {
   };
 
   const kick = () => {
+    playKick();
+    showAction('🦵 KICKING');
     setGameState(prev => {
       const mindfulZombies = prev.zombies.filter(z => z.type === 'mindful');
       if (mindfulZombies.length > 0) {
@@ -245,6 +313,8 @@ export const ZombieGame = () => {
   };
 
   const shoot = () => {
+    playGunshot();
+    showAction('🔫 SHOOTING');
     setGameState(prev => {
       if (prev.ammo <= 0) {
         addLog("🚫 Out of ammo!");
@@ -271,6 +341,8 @@ export const ZombieGame = () => {
   };
 
   const attemptRun = () => {
+    playRun();
+    showAction('🏃‍♂️ RUNNING');
     if (gameState.zombies.length === 0) {
       const saved = Math.floor(Math.random() * 11) + 5;
       setGameState(prev => ({
@@ -416,6 +488,12 @@ export const ZombieGame = () => {
                   className="w-12 h-12 drop-shadow-lg"
                 />
                 <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-8 h-2 bg-blue-500 rounded-full opacity-50"></div>
+                {/* Action indicator */}
+                {gameState.currentAction && (
+                  <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 text-yellow-400 font-bold text-sm animate-bounce whitespace-nowrap">
+                    {gameState.currentAction}
+                  </div>
+                )}
               </div>
 
               {/* Zombies */}
@@ -430,7 +508,8 @@ export const ZombieGame = () => {
                   }}
                 >
                   <img 
-                    src={zombie.type === 'mindless' ? mindlessZombieSprite : mindfulZombieSprite}
+                    src={gameState.processedZombieSprites[zombie.type] || 
+                         (zombie.type === 'mindless' ? mindlessZombieSprite : mindfulZombieSprite)}
                     alt={`${zombie.type} zombie`}
                     className={`w-10 h-10 drop-shadow-lg ${
                       zombie.type === 'mindless' 
