@@ -2,6 +2,10 @@ import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
+import destroyedCityBg from "@/assets/destroyed-city-bg.jpg";
+import mindlessZombieSprite from "@/assets/mindless-zombie.png";
+import mindfulZombieSprite from "@/assets/mindful-zombie.png";
+import playerSprite from "@/assets/player-sprite.png";
 
 interface Zombie {
   id: number;
@@ -9,6 +13,11 @@ interface Zombie {
   x: number;
   y: number;
   health: number;
+  targetX: number;
+  targetY: number;
+  speed: number;
+  direction: number;
+  lastDirectionChange: number;
 }
 
 interface GameState {
@@ -51,20 +60,60 @@ export const ZombieGame = () => {
     }
   }, [gameState.battleLog]);
 
-  // Zombie movement animation
+  // Realistic zombie movement animation
   useEffect(() => {
     if (!gameState.gameActive) return;
 
     const interval = setInterval(() => {
       setGameState(prev => ({
         ...prev,
-        zombies: prev.zombies.map(zombie => ({
-          ...zombie,
-          x: Math.max(0, Math.min(90, zombie.x + (Math.random() - 0.5) * 8)),
-          y: Math.max(0, Math.min(90, zombie.y + (Math.random() - 0.5) * 8)),
-        }))
+        zombies: prev.zombies.map(zombie => {
+          const now = Date.now();
+          let newZombie = { ...zombie };
+          
+          // Change direction occasionally for realistic wandering
+          if (now - zombie.lastDirectionChange > 2000 + Math.random() * 3000) {
+            newZombie.direction = Math.random() * Math.PI * 2;
+            newZombie.lastDirectionChange = now;
+            // Set new target for mindful zombies (they move more purposefully)
+            if (zombie.type === 'mindful') {
+              newZombie.targetX = Math.random() * 85 + 5;
+              newZombie.targetY = Math.random() * 85 + 5;
+            }
+          }
+
+          // Calculate movement based on zombie type
+          let deltaX = 0;
+          let deltaY = 0;
+
+          if (zombie.type === 'mindless') {
+            // Mindless zombies shamble randomly
+            deltaX = Math.cos(newZombie.direction) * zombie.speed * (0.5 + Math.random() * 0.5);
+            deltaY = Math.sin(newZombie.direction) * zombie.speed * (0.5 + Math.random() * 0.5);
+          } else {
+            // Mindful zombies move toward targets more strategically
+            const targetDx = newZombie.targetX - zombie.x;
+            const targetDy = newZombie.targetY - zombie.y;
+            const distance = Math.sqrt(targetDx * targetDx + targetDy * targetDy);
+            
+            if (distance > 2) {
+              deltaX = (targetDx / distance) * zombie.speed;
+              deltaY = (targetDy / distance) * zombie.speed;
+            } else {
+              // Reached target, set new one
+              newZombie.targetX = Math.random() * 85 + 5;
+              newZombie.targetY = Math.random() * 85 + 5;
+            }
+          }
+
+          // Apply movement with boundaries
+          newZombie.x = Math.max(2, Math.min(88, zombie.x + deltaX));
+          newZombie.y = Math.max(2, Math.min(88, zombie.y + deltaY));
+
+          return newZombie;
+        })
       }));
-    }, 500);
+    }, 200); // Faster updates for smoother movement
 
     return () => clearInterval(interval);
   }, [gameState.gameActive]);
@@ -80,6 +129,11 @@ export const ZombieGame = () => {
         x: Math.random() * 80 + 10,
         y: Math.random() * 80 + 10,
         health: 1,
+        targetX: Math.random() * 80 + 10,
+        targetY: Math.random() * 80 + 10,
+        speed: 0.8 + Math.random() * 0.4, // Slower, shambling speed
+        direction: Math.random() * Math.PI * 2,
+        lastDirectionChange: Date.now(),
       });
     }
 
@@ -91,6 +145,11 @@ export const ZombieGame = () => {
         x: Math.random() * 80 + 10,
         y: Math.random() * 80 + 10,
         health: 1,
+        targetX: Math.random() * 80 + 10,
+        targetY: Math.random() * 80 + 10,
+        speed: 1.2 + Math.random() * 0.6, // Faster, more coordinated
+        direction: Math.random() * Math.PI * 2,
+        lastDirectionChange: Date.now(),
       });
     }
 
@@ -328,46 +387,72 @@ export const ZombieGame = () => {
               )}
             </div>
 
-            {/* Arena */}
-            <div className="relative w-full aspect-square bg-black border-4 border-red-800 rounded-lg overflow-hidden">
+            {/* Arena - Destroyed City */}
+            <div 
+              className="relative w-full aspect-square border-4 border-red-800 rounded-lg overflow-hidden"
+              style={{
+                backgroundImage: `url(${destroyedCityBg})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat',
+              }}
+            >
+              {/* Dark overlay for better visibility */}
+              <div className="absolute inset-0 bg-black bg-opacity-40"></div>
+              
               {gameState.showKO && (
                 <div className="absolute inset-0 flex items-center justify-center z-50">
-                  <div className="text-6xl font-bold text-yellow-400 animate-pulse">
+                  <div className="text-6xl font-bold text-yellow-400 animate-pulse drop-shadow-lg">
                     K.O!
                   </div>
                 </div>
               )}
               
               {/* Player */}
-              <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 w-8 h-8 bg-blue-500 rounded-full border-2 border-blue-300 flex items-center justify-center">
-                👤
+              <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-20">
+                <img 
+                  src={playerSprite}
+                  alt="Player"
+                  className="w-12 h-12 drop-shadow-lg"
+                />
+                <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-8 h-2 bg-blue-500 rounded-full opacity-50"></div>
               </div>
 
               {/* Zombies */}
               {gameState.zombies.map((zombie) => (
                 <div
                   key={zombie.id}
-                  className={`absolute w-6 h-6 rounded-full transition-all duration-500 ${
-                    zombie.type === 'mindless' 
-                      ? 'bg-green-600 border-green-400' 
-                      : 'bg-red-600 border-red-400'
-                  } border-2 flex items-center justify-center text-xs animate-pulse`}
+                  className="absolute transition-all duration-200 ease-linear z-10"
                   style={{
                     left: `${zombie.x}%`,
                     top: `${zombie.y}%`,
+                    transform: 'translate(-50%, -50%)',
                   }}
                 >
-                  {zombie.type === 'mindless' ? (
-                    '🧟'
-                  ) : (
-                    <img 
-                      src="/lovable-uploads/b6100da4-a17d-44c1-914a-8fefaa2651fa.png" 
-                      alt="Mindful Zombie"
-                      className="w-full h-full object-cover rounded-full"
-                    />
-                  )}
+                  <img 
+                    src={zombie.type === 'mindless' ? mindlessZombieSprite : mindfulZombieSprite}
+                    alt={`${zombie.type} zombie`}
+                    className={`w-10 h-10 drop-shadow-lg ${
+                      zombie.type === 'mindless' 
+                        ? 'animate-pulse' 
+                        : 'hover:scale-110 transition-transform'
+                    }`}
+                  />
+                  {/* Shadow for depth */}
+                  <div className={`absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-6 h-1.5 rounded-full opacity-30 ${
+                    zombie.type === 'mindless' ? 'bg-green-500' : 'bg-red-500'
+                  }`}></div>
+                  {/* Health indicator */}
+                  <div className={`absolute -top-2 left-1/2 transform -translate-x-1/2 w-8 h-1 rounded-full ${
+                    zombie.type === 'mindless' ? 'bg-green-400' : 'bg-red-400'
+                  }`}></div>
                 </div>
               ))}
+              
+              {/* City debris overlay elements for immersion */}
+              <div className="absolute bottom-0 left-0 w-full h-8 bg-gradient-to-t from-gray-900 to-transparent opacity-60"></div>
+              <div className="absolute top-0 right-0 w-16 h-16 bg-gray-800 opacity-30 rounded-bl-lg"></div>
+              <div className="absolute bottom-1/4 left-1/4 w-4 h-4 bg-orange-600 rounded-full animate-pulse opacity-70"></div>
             </div>
 
             {/* Action Buttons */}
